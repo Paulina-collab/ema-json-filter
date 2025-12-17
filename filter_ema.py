@@ -7,22 +7,50 @@ EMA_URL = "https://www.ema.europa.eu/en/documents/report/documents-output-json-r
 def parse_date(s: str):
     if not s:
         return None
-    # Try common ISO-like formats
     try:
-        # Handles e.g. "2025-12-16T10:00:00Z" or similar
         return datetime.fromisoformat(s.replace("Z", "+00:00"))
     except Exception:
         return None
 
+def extract_records(payload):
+    """
+    EMA payload can be:
+      - a list of records
+      - a dict containing the list under some key (e.g., 'data', 'items', etc.)
+    We return a list of dict-like records.
+    """
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        for key in ("items", "data", "records", "results"):
+            v = payload.get(key)
+            if isinstance(v, list):
+                return v
+        # fallback: if dict values contain a list, use the first list we find
+        for v in payload.values():
+            if isinstance(v, list):
+                return v
+    return []
+
 def main(days: int = 3):
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
-    with urllib.request.urlopen(EMA_URL) as r:
+    req = urllib.request.Request(
+        EMA_URL,
+        headers={"User-Agent": "Mozilla/5.0"}
+    )
+
+    with urllib.request.urlopen(req) as r:
         raw = r.read()
-    data = json.loads(raw)
+
+    payload = json.loads(raw)
+    records = extract_records(payload)
 
     items = []
-    for it in data:
+    for it in records:
+        if not isinstance(it, dict):
+            continue  # skip strings/other junk safely
+
         d = parse_date(it.get("last_update_date")) or parse_date(it.get("publish_date"))
         if d and d >= cutoff:
             items.append(it)

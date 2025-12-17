@@ -46,14 +46,18 @@ def main(days: int = 3):
     payload = json.loads(raw)
     records = extract_records(payload)
 
-    items = []
+        items = []
     for it in records:
-        if not isinstance(it, dict):
-            continue  # skip strings/other junk safely
+        try:
+            last = it.get("last_update_date")
+            pub = it.get("publish_date")
+        except Exception:
+            continue  # skips strings or anything non-dict safely
 
-        d = parse_date(it.get("last_update_date")) or parse_date(it.get("publish_date"))
+        d = parse_date(last) or parse_date(pub)
         if d and d >= cutoff:
             items.append(it)
+
 
     out = {
         "source": "EMA documents JSON (filtered)",

@@ -47,16 +47,32 @@ def main(days: int = 3):
     records = extract_records(payload)
 
         items = []
-    for it in records:
-        try:
-            last = it.get("last_update_date")
-            pub = it.get("publish_date")
-        except Exception:
-            continue  # skips strings or anything non-dict safely
+bad_types = {"str": 0, "other": 0}
 
-        d = parse_date(last) or parse_date(pub)
-        if d and d >= cutoff:
-            items.append(it)
+for it in records:
+    # Some EMA dumps can contain items that are JSON-encoded strings
+    if isinstance(it, str):
+        bad_types["str"] += 1
+        s = it.strip()
+        if s.startswith("{") and s.endswith("}"):
+            try:
+                it = json.loads(s)
+            except Exception:
+                continue
+        else:
+            continue
+
+    if not isinstance(it, dict):
+        bad_types["other"] += 1
+        continue
+
+    d = parse_date(it.get("last_update_date")) or parse_date(it.get("publish_date"))
+    if d and d >= cutoff:
+        items.append(it)
+
+print("DEBUG types skipped:", bad_types)
+print("DEBUG records_len:", len(records), "filtered_len:", len(items))
+
 
 
     out = {

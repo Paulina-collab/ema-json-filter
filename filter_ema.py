@@ -74,7 +74,7 @@ def main(days: int = 3):
         "items": items,
     }
 
-    with open("filtered_ema.json", "w", encoding="utf-8") as f:
+   with open("docs/filtered_ema.json", "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False)
 
     print(f"OK records={len(records)} filtered={len(items)} skipped_str={skipped_str} skipped_other={skipped_other}")

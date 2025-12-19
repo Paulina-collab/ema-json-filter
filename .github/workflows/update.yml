@@ -6,6 +6,10 @@ on:
   workflow_dispatch: {}
 
 permissions:
+concurrency:
+  group: ema-json-filter-main
+  cancel-in-progress: true
+
   contents: write
 
 jobs:

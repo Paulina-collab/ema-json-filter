@@ -23,19 +23,21 @@ jobs:
       - name: Run filter
         run: python filter_ema.py
 
-            - name: Commit and push if changed
+     - name: Commit and push if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # Add whichever file(s) you generate
           git add filtered_ema.json docs/filtered_ema.json || true
 
-          # If nothing staged, stop
+          # If nothing changed, stop
           git diff --staged --quiet && exit 0
 
           git commit -m "Update filtered EMA JSON" || exit 0
 
-          # Pull latest main and re-apply our commit, then push
+          # Rebase on the latest main and push safely
           git pull --rebase origin main
-          git push origin HEAD:main
+          git push --force-with-lease origin HEAD:main
+
 

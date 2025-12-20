@@ -13,7 +13,6 @@ def parse_date(s: str):
         return None
 
 def extract_records(payload):
-    # payload can be list OR dict with list under a key
     if isinstance(payload, list):
         return payload
     if isinstance(payload, dict):
@@ -44,7 +43,6 @@ def main(days: int = 3):
     skipped_other = 0
 
     for it in records:
-        # Sometimes entries can be JSON encoded as strings
         if isinstance(it, str):
             skipped_str += 1
             s = it.strip()
@@ -74,7 +72,7 @@ def main(days: int = 3):
         "items": items,
     }
 
-   with open("docs/filtered_ema.json", "w", encoding="utf-8") as f:
+    with open("docs/filtered_ema.json", "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False)
 
     print(f"OK records={len(records)} filtered={len(items)} skipped_str={skipped_str} skipped_other={skipped_other}")

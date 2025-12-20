@@ -20,6 +20,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Sync with main
+        run: |
+          git checkout main
+          git pull --rebase origin main
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -39,7 +43,6 @@ jobs:
 
           # Make sure we're on main and up to date
           git checkout main
-          git pull --rebase origin main
 
           # Stage outputs (both paths ok)
           git add docs/filtered_ema.json filtered_ema.json || true
@@ -51,3 +54,4 @@ jobs:
 
           # Push safely
           git push --force-with-lease origin HEAD:main
+

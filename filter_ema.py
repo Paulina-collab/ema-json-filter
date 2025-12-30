@@ -1,5 +1,8 @@
 import json
 import urllib.request
+import http.client
+import gzip
+import io
 from datetime import datetime, timedelta, timezone
 
 EMA_URL = "https://www.ema.europa.eu/en/documents/report/documents-output-json-report_en.json"
@@ -25,17 +28,52 @@ def extract_records(payload):
                 return v
     return []
 
+def fetch_bytes(url: str, retries: int = 3, timeout: int = 120) -> bytes:
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0",
+                    "Accept-Encoding": "gzip",
+                    "Accept": "application/json,text/plain,*/*",
+                },
+                method="GET",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                chunks = []
+                while True:
+                    try:
+                        chunk = r.read(1024 * 1024)  # 1 MB
+                    except http.client.IncompleteRead as e:
+                        # keep whatever was received and stop
+                        if e.partial:
+                            chunks.append(e.partial)
+                        break
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+
+                data = b"".join(chunks)
+
+                enc = (r.headers.get("Content-Encoding") or "").lower()
+                if "gzip" in enc:
+                    data = gzip.decompress(data)
+
+                return data
+
+        except Exception as e:
+            last_err = e
+
+    raise last_err
+
 def main(days: int = 3):
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
-    req = urllib.request.Request(
-        EMA_URL,
-        headers={"User-Agent": "Mozilla/5.0"}
-    )
-    with urllib.request.urlopen(req) as r:
-        raw = r.read()
+    raw = fetch_bytes(EMA_URL, retries=3, timeout=180)
+    payload = json.loads(raw.decode("utf-8", errors="replace"))
 
-    payload = json.loads(raw)
     records = extract_records(payload)
 
     items = []
@@ -78,4 +116,5 @@ def main(days: int = 3):
     print(f"OK records={len(records)} filtered={len(items)} skipped_str={skipped_str} skipped_other={skipped_other}")
 
 if __name__ == "__main__":
+    # Change this number to test (e.g., 30) then set back to 3 later.
     main(days=30)

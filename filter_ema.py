@@ -78,4 +78,4 @@ def main(days: int = 3):
     print(f"OK records={len(records)} filtered={len(items)} skipped_str={skipped_str} skipped_other={skipped_other}")
 
 if __name__ == "__main__":
-    main(days=3)
+    main(days=30)

@@ -117,4 +117,4 @@ def main(days: int = 3):
 
 if __name__ == "__main__":
     # Change this number to test (e.g., 30) then set back to 3 later.
-    main(days=30)
+    main(days=3)

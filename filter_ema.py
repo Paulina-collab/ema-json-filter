@@ -1,13 +1,15 @@
 import json
-import urllib.request
-import http.client
+import sys
+import time
 import gzip
-import io
+import http.client
+import urllib.request
 from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Union
 
 EMA_URL = "https://www.ema.europa.eu/en/documents/report/documents-output-json-report_en.json"
 
-def parse_date(s: str):
+def parse_date(s: Optional[str]) -> Optional[datetime]:
     if not s:
         return None
     try:
@@ -15,7 +17,8 @@ def parse_date(s: str):
     except Exception:
         return None
 
-def extract_records(payload):
+def extract_records(payload: Any) -> List[Any]:
+    # EMA payload may be a list OR a dict wrapping a list
     if isinstance(payload, list):
         return payload
     if isinstance(payload, dict):
@@ -23,60 +26,74 @@ def extract_records(payload):
             v = payload.get(key)
             if isinstance(v, list):
                 return v
+        # fallback: first list value
         for v in payload.values():
             if isinstance(v, list):
                 return v
     return []
 
-def fetch_bytes(url: str, retries: int = 3, timeout: int = 120) -> bytes:
+def fetch_bytes(url: str, attempts: int = 5, timeout: int = 120) -> bytes:
     last_err = None
-    for attempt in range(1, retries + 1):
+    for i in range(1, attempts + 1):
         try:
             req = urllib.request.Request(
                 url,
                 headers={
                     "User-Agent": "Mozilla/5.0",
-                    "Accept-Encoding": "gzip",
                     "Accept": "application/json,text/plain,*/*",
+                    "Accept-Encoding": "gzip",
                 },
-                method="GET",
             )
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                chunks = []
-                while True:
-                    try:
-                        chunk = r.read(1024 * 1024)  # 1 MB
-                    except http.client.IncompleteRead as e:
-                        # keep whatever was received and stop
-                        if e.partial:
-                            chunks.append(e.partial)
-                        break
-                    if not chunk:
-                        break
-                    chunks.append(chunk)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                encoding = (resp.headers.get("Content-Encoding") or "").lower()
+                buf = bytearray()
+                try:
+                    while True:
+                        chunk = resp.read(1024 * 1024)  # 1 MB chunks
+                        if not chunk:
+                            break
+                        buf.extend(chunk)
+                except http.client.IncompleteRead as e:
+                    # got partial data; treat as failure so we retry
+                    buf.extend(e.partial or b"")
+                    raise
 
-                data = b"".join(chunks)
+            data = bytes(buf)
+            if encoding == "gzip":
+                data = gzip.decompress(data)
 
-                enc = (r.headers.get("Content-Encoding") or "").lower()
-                if "gzip" in enc:
-                    data = gzip.decompress(data)
+            # Sanity check: avoid parsing HTML error pages as JSON
+            head = data.lstrip()[:1]
+            if head not in (b"{", b"["):
+                preview = data.lstrip()[:300].decode("utf-8", errors="replace")
+                raise ValueError(f"Response is not JSON (starts with {head!r}). Preview:\n{preview}")
 
-                return data
+            return data
 
         except Exception as e:
             last_err = e
+            # backoff retry
+            time.sleep(min(2 ** (i - 1), 10))
 
-    raise last_err
+    raise RuntimeError(f"Failed to download a valid JSON payload after {attempts} attempts: {last_err}")
 
-def main(days: int = 3):
+def main(days: int = 3) -> None:
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
-    raw = fetch_bytes(EMA_URL, retries=3, timeout=180)
-    payload = json.loads(raw.decode("utf-8", errors="replace"))
+    raw = fetch_bytes(EMA_URL, attempts=5, timeout=180)
+
+    try:
+        payload = json.loads(raw.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError as e:
+        # print a small tail/head for debugging
+        txt = raw.decode("utf-8", errors="replace")
+        print("JSON decode failed. First 500 chars:\n", txt[:500], file=sys.stderr)
+        print("\nLast 500 chars:\n", txt[-500:], file=sys.stderr)
+        raise
 
     records = extract_records(payload)
 
-    items = []
+    items: List[Dict[str, Any]] = []
     skipped_str = 0
     skipped_other = 0
 
@@ -110,11 +127,11 @@ def main(days: int = 3):
         "items": items,
     }
 
+    # Write pretty JSON (easier to inspect) but still valid
     with open("docs/filtered_ema.json", "w", encoding="utf-8") as f:
-        json.dump(out, f, ensure_ascii=False)
+        json.dump(out, f, ensure_ascii=False, indent=2)
 
     print(f"OK records={len(records)} filtered={len(items)} skipped_str={skipped_str} skipped_other={skipped_other}")
 
 if __name__ == "__main__":
-    # Change this number to test (e.g., 30) then set back to 3 later.
     main(days=3)
